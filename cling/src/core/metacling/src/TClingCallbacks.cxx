@@ -520,7 +520,8 @@ bool TClingCallbacks::tryResolveAtRuntimeInternal(LookupResult &R, Scope *S) {
    // EvaluateTSynthesizer at all!
 
    SourceRange invalidRange;
-   Wrapper->addAttr(new (C) AnnotateAttr(invalidRange, C, "__ResolveAtRuntime", 0));
+   //Wrapper->addAttr(new (C) AnnotateAttr(invalidRange, C, "__ResolveAtRuntime", 0));
+   Wrapper->addAttr(new (C) AnnotateAttr(C, clang::AttributeCommonInfo{invalidRange}, "__ResolveAtRuntime"));
 
    // Here we have the scope but we cannot do Sema::PushDeclContext, because
    // on pop it will try to go one level up, which we don't want.
@@ -648,7 +649,8 @@ bool TClingCallbacks::tryInjectImplicitAutoKeyword(LookupResult &R, Scope *S) {
    // FIXME: We should move this in cling, when we implement turning it on
    // and off.
    SourceRange invalidRange;
-   Result->addAttr(new (C) AnnotateAttr(invalidRange, C, "__Auto", 0));
+   //Result->addAttr(new (C) AnnotateAttr(invalidRange, C, "__Auto", 0));
+   Result->addAttr(new (C) AnnotateAttr(C, clang::AttributeCommonInfo{invalidRange}, "__Auto"));
 
    R.addDecl(Result);
    // Say that we can handle the situation. Clang should try to recover
@@ -784,7 +786,7 @@ static void SearchAndAddPath(const std::string& Path,
       if (shouldIgnore(FileName))
          continue;
 
-      sLibraries.push_back(std::make_pair(sPaths.size(), llvm::sys::path::filename(FileName)));
+      sLibraries.push_back(std::make_pair(sPaths.size(), llvm::sys::path::filename(FileName).str()));
       flag = true;
    }
 

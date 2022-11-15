@@ -39,7 +39,7 @@ DEBUG_TESTBUILD = False
 TARBALL_CACHE_DIR = 'releases'
 ERR_RELEASE_NOT_FOUND = 2
 
-ROOT_VERSION = '6.26.04'
+ROOT_VERSION = '6.27.01.x1'
 
 #
 ## released source pull and copy of Cling
@@ -47,32 +47,12 @@ ROOT_VERSION = '6.26.04'
 if not os.path.exists(TARBALL_CACHE_DIR):
     os.mkdir(TARBALL_CACHE_DIR)
 
-fn = 'root_v%s.source.tar.gz' % ROOT_VERSION
-addr = 'https://root.cern.ch/download/'+fn
-if not os.path.exists(os.path.join(TARBALL_CACHE_DIR, fn)):
-    try:
-        print('retrieving', fn)
-        if sys.hexversion < 0x3000000:
-            output_fn = fn
-        else:
-            output_fn = bytes(fn, 'utf-8')
-        with contextlib.closing(urllib2.urlopen(addr, output_fn)) as resp:
-            with open(os.path.join(TARBALL_CACHE_DIR, fn), 'wb') as out:
-                shutil.copyfileobj(resp, out)
-    except urllib2.HTTPError:
-        print('release %s not found' % ROOT_VERSION)
-        sys.exit(ERR_RELEASE_NOT_FOUND)
-else:
-    print('reusing', fn, 'from local directory')
-
-
-fn = os.path.join(TARBALL_CACHE_DIR, fn)
 pkgdir = os.path.join('root-' + ROOT_VERSION)
 if not os.path.exists(pkgdir):
+    addr = 'https://github.com/mkolin/root.git'
     print('now extracting', ROOT_VERSION)
-    tf = tarfile.TarFile.gzopen(fn)
-    tf.extractall()
-    tf.close()
+    subprocess.run(['git', 'clone', addr, pkgdir])
+    subprocess.run(['git', 'checkout', 'llvm13'], cwd=pkgdir)
 else:
     print('reusing existing directory', pkgdir)
 
@@ -115,8 +95,8 @@ except ImportError:
 
 patch_files = ['typedef_of_private', 'optlevel2_forced', 'explicit_template',
                'alias_template', 'incomplete_types', 'clang_printing',
-               'improv_load', 'unload', 'pch', 'win64rtti', 'win64s2',
-               'locales', 'build', 'cuda102', '11388']
+               'improv_load', 'unload', 'pch', 'win64rtti',
+               'locales', 'build']
 
 if 'linux' in sys.platform:
     patch_files.append('system_dirs')

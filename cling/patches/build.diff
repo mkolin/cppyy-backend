@@ -39,7 +39,7 @@ index 1ab35553fa..b7c99ba281 100644
 -    //Opts.Modules = 1;
 +// TODO: temporary hack, switching off modules for C++20, which is enabled
 +// by default otherwise (yet not currently supported in cppyy-cling)
-+    if (Opts.CPlusPlus2a)
++    if (Opts.CPlusPlus20)
 +        Opts.Modules = 0;
  
      // See test/CodeUnloading/PCH/VTables.cpp which implicitly compares clang

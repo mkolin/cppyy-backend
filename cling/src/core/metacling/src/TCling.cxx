@@ -601,7 +601,7 @@ extern "C" const Decl* TCling__GetObjectDecl(TObject *obj) {
 extern "C" R__DLLEXPORT TInterpreter *CreateInterpreter(void* interpLibHandle,
                                                         const char* argv[])
 {
-   cling::DynamicLibraryManager::ExposeHiddenSharedLibrarySymbols(interpLibHandle);
+   //cling::DynamicLibraryManager::ExposeHiddenSharedLibrarySymbols(interpLibHandle);
    return new TCling("C++", "cling C++ Interpreter", argv);
 }
 
@@ -1136,8 +1136,8 @@ static GlobalModuleIndex *loadGlobalModuleIndex(cling::Interpreter &interp)
 {
    CompilerInstance &CI = *interp.getCI();
    Preprocessor &PP = CI.getPreprocessor();
-   auto ModuleManager = CI.getModuleManager();
-   assert(ModuleManager);
+   //auto ModuleManager = &CI.getASTReader()->getModuleManager();
+   //assert(ModuleManager);
    // StringRef ModuleIndexPath = HSI.getModuleCachePath();
    // HeaderSearch& HSI = PP.getHeaderSearchInfo();
    // HSI.setModuleCachePath(TROOT::GetLibDir().Data());
@@ -1145,9 +1145,9 @@ static GlobalModuleIndex *loadGlobalModuleIndex(cling::Interpreter &interp)
    if (ModuleIndexPath.empty())
       return nullptr;
    // Get an existing global index. This loads it if not already loaded.
-   ModuleManager->resetForReload();
-   ModuleManager->loadGlobalIndex();
-   GlobalModuleIndex *GlobalIndex = ModuleManager->getGlobalIndex();
+   CI.getASTReader()->resetForReload();
+   CI.getASTReader()->loadGlobalIndex();
+   GlobalModuleIndex *GlobalIndex = CI.getASTReader()->getGlobalIndex();
 
    // For finding modules needing to be imported for fixit messages,
    // we need to make the global index cover all modules, so we do that here.
@@ -1226,9 +1226,9 @@ static GlobalModuleIndex *loadGlobalModuleIndex(cling::Interpreter &interp)
                                                       CI.getPCHContainerReader(),
                                                       ModuleIndexPath,
                                                       &IDs));
-         ModuleManager->resetForReload();
-         ModuleManager->loadGlobalIndex();
-         GlobalIndex = ModuleManager->getGlobalIndex();
+         CI.getASTReader()->resetForReload();
+         CI.getASTReader()->loadGlobalIndex();
+         // GlobalModuleIndex *GlobalIndex = CI.getASTReader()->getGlobalIndex();
       }
       HaveFullGlobalModuleIndex = true;
    }
@@ -1302,7 +1302,7 @@ static void RegisterCxxModules(cling::Interpreter &clingInterp)
          loadGlobalModuleIndex(clingInterp);
          // FIXME: The ASTReader still calls loadGlobalIndex and loads the file
          // We should investigate how to suppress it completely.
-         GlobalIndex = CI.getModuleManager()->getGlobalIndex();
+         GlobalIndex = CI.getASTReader()->getGlobalIndex();
       }
 
       llvm::StringSet<> KnownModuleFileNames;
@@ -1325,8 +1325,8 @@ static void RegisterCxxModules(cling::Interpreter &clingInterp)
          if (GlobalIndex && KnownModuleFileNames.count(FullASTFilePath))
             continue;
 
-         if (M->IsMissingRequirement)
-            continue;
+         //if (M->IsMissingRequirement)
+         //   continue;
 
          if (GlobalIndex)
             LoadModule(M->Name, clingInterp);
@@ -1587,7 +1587,10 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
        }
    }
 
-   fInterpreter = llvm::make_unique<cling::Interpreter>(interpArgs.size(),
+   //fInterpreter = llvm::make_unique<cling::Interpreter>(interpArgs.size(),
+   //                                                     &(interpArgs[0]),
+   //                                                     llvmResourceDir, extensions);
+   fInterpreter = std::make_unique<cling::Interpreter>(interpArgs.size(),
                                                         &(interpArgs[0]),
                                                         llvmResourceDir, extensions);
 
@@ -1595,12 +1598,12 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
    fInterpreter->getCI()->getCodeGenOpts().OptimizationLevel = 2;
    fInterpreter->setDefaultOptLevel(2);
 
-   if (!fromRootCling) {
-      fInterpreter->installLazyFunctionCreator(llvmLazyFunctionCreator);
-   }
+   //if (!fromRootCling) {
+   //   fInterpreter->installLazyFunctionCreator(llvmLazyFunctionCreator);
+   //}
 
    // Don't check whether modules' files exist.
-   fInterpreter->getCI()->getPreprocessorOpts().DisablePCHValidation = true;
+   fInterpreter->getCI()->getPreprocessorOpts().DisablePCHOrModuleValidation = DisableValidationForModuleKind::PCH;
 
    // Until we can disable autoloading during Sema::CorrectTypo() we have
    // to disable spell checking.
@@ -1610,7 +1613,8 @@ TCling::TCling(const char *name, const char *title, const char* const argv[])
    // using llvm::outs. Keeping file descriptor open we will be able to use
    // the results in pipes (Savannah #99234).
    static llvm::raw_fd_ostream fMPOuts (STDOUT_FILENO, /*ShouldClose*/false);
-   fMetaProcessor = llvm::make_unique<cling::MetaProcessor>(*fInterpreter, fMPOuts);
+   //fMetaProcessor = llvm::make_unique<cling::MetaProcessor>(*fInterpreter, fMPOuts);
+   fMetaProcessor = std::make_unique<cling::MetaProcessor>(*fInterpreter, fMPOuts);
 
    RegisterCxxModules(*fInterpreter);
    RegisterPreIncludedHeaders(*fInterpreter);
@@ -2009,8 +2013,10 @@ bool TCling::RegisterPrebuiltModulePath(const std::string &FullPath,
    FileManager &FM = PP.getFileManager();
    // FIXME: In a ROOT session we can add an include path (through .I /inc/path)
    // We should look for modulemap files there too.
-   const DirectoryEntry *DE = FM.getDirectory(FullPath);
-   if (DE) {
+   // const DirectoryEntry *DE = FM.getDirectory(FullPath);
+   auto DEE = FM.getDirectory(FullPath);
+   if (DEE) {
+      const DirectoryEntry *DE = DEE.get();
       HeaderSearch &HS = PP.getHeaderSearchInfo();
       HeaderSearchOptions &HSOpts = HS.getHeaderSearchOpts();
       const auto &ModPaths = HSOpts.PrebuiltModulePaths;
@@ -2023,13 +2029,15 @@ bool TCling::RegisterPrebuiltModulePath(const std::string &FullPath,
       // Code copied from HS.lookupModuleMapFile.
       llvm::SmallString<256> ModuleMapFileName(DE->getName());
       llvm::sys::path::append(ModuleMapFileName, ModuleMapName);
-      const FileEntry *FE = FM.getFile(ModuleMapFileName, /*openFile*/ false,
-                                       /*CacheFailure*/ false);
+      auto FEE = FM.getFile(ModuleMapFileName, /*openFile*/ false,
+                            /*CacheFailure*/ false);
+      //const FileEntry *FE = FM.getFile(ModuleMapFileName, /*openFile*/ false,
+      //                                 /*CacheFailure*/ false);
 
       // FIXME: Calling IsLoaded is slow! Replace this with the appropriate
       // call to the clang::ModuleMap class.
-      if (FE && !this->IsLoaded(FE->getName().data())) {
-         if (!HS.loadModuleMapFile(FE, /*IsSystem*/ false))
+      if (FEE && !this->IsLoaded(FEE.get()->getName().data())) {
+         if (!HS.loadModuleMapFile(FEE.get(), /*IsSystem*/ false))
             return true;
          Error("RegisterPrebuiltModulePath", "Could not load modulemap in %s", ModuleMapFileName.c_str());
       }
@@ -2353,7 +2361,7 @@ void TCling::RegisterModule(const char* modulename,
          ModuleMapName = ModuleName + ".modulemap";
       else
          ModuleMapName = "module.modulemap";
-      RegisterPrebuiltModulePath(llvm::sys::path::parent_path(dyLibName),
+      RegisterPrebuiltModulePath(llvm::sys::path::parent_path(dyLibName).str(),
                                  ModuleMapName);
 
       // FIXME: We should only complain for modules which we know to exist. For example, we should not complain about
@@ -3193,7 +3201,7 @@ Bool_t TCling::HasPCMForLibrary(const char *libname) const
 
    clang::ModuleMap &moduleMap = fInterpreter->getCI()->getPreprocessor().getHeaderSearchInfo().getModuleMap();
    clang::Module *M = moduleMap.findModule(ModuleName);
-   return M && !M->IsMissingRequirement && M->getASTFile();
+   return M && /* !M->IsMissingRequirement && */ M->getASTFile();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3229,8 +3237,8 @@ Bool_t TCling::IsLoaded(const char* filename) const
    // Fill fileMap; return early on exact match.
    for (llvm::SmallVector<llvm::StringRef, 100>::const_iterator
            iF = files.begin(), iE = files.end(); iF != iE; ++iF) {
-      if ((*iF) == file_name.c_str()) return kTRUE; // exact match
-      fileMap.insert(*iF);
+      if (iF->str() == file_name.c_str()) return kTRUE; // exact match
+      fileMap.insert(iF->str());
    }
 
    if (fileMap.empty()) return kFALSE;
@@ -3257,7 +3265,7 @@ Bool_t TCling::IsLoaded(const char* filename) const
    const clang::DirectoryLookup *CurDir = 0;
    clang::Preprocessor &PP = fInterpreter->getCI()->getPreprocessor();
    clang::HeaderSearch &HS = PP.getHeaderSearchInfo();
-   const clang::FileEntry *FE = HS.LookupFile(file_name.c_str(),
+   auto OFE = HS.LookupFile(file_name.c_str(),
                                               clang::SourceLocation(),
                                               /*isAngled*/ false,
                                               /*FromDir*/ 0, CurDir,
@@ -3273,7 +3281,8 @@ Bool_t TCling::IsLoaded(const char* filename) const
                                               /*BuildSystemModule*/ false,
                                               /*OpenFile*/ false,
                                               /*CacheFail*/ false);
-   if (FE && FE->isValid()) {
+   if (OFE && OFE.getValue().isValid()) {
+       const clang::FileEntry *FE = OFE.getValue();
       // check in the source manager if the file is actually loaded
       clang::SourceManager &SM = fInterpreter->getCI()->getSourceManager();
       // this works only with header (and source) files...
@@ -3282,7 +3291,7 @@ Bool_t TCling::IsLoaded(const char* filename) const
          return kFALSE;
       else {
          clang::SrcMgr::SLocEntry SLocE = SM.getSLocEntry(FID);
-         if (SLocE.isFile() && SLocE.getFile().getContentCache()->getRawBuffer() == 0)
+         if (SLocE.isFile() && !SLocE.getFile().getContentCache().getBufferIfLoaded())
             return kFALSE;
          if (!FID.isInvalid())
             return kTRUE;
@@ -5930,9 +5939,8 @@ static uint32_t GNUHash(StringRef S) {
 
 static StringRef GetGnuHashSection(llvm::object::ObjectFile *file) {
    for (auto S : file->sections()) {
-      StringRef name;
-      S.getName(name);
-      if (name == ".gnu.hash") {
+      StringRef name{ S.getName().get() };
+      if (name.str() == ".gnu.hash") {
          StringRef content = *(S.getContents());
          return content;
       }
@@ -5994,7 +6002,7 @@ static bool FindSymbol(const std::string &library_filename,
       return false;
 
    for (const auto &S : BinObjFile->symbols()) {
-      uint32_t Flags = S.getFlags();
+      uint32_t Flags = S.getFlags().get();
       // Do not insert in the table symbols flagged to ignore.
       if (Flags & IgnoreSymbolFlags)
          continue;
@@ -6029,7 +6037,7 @@ static bool FindSymbol(const std::string &library_filename,
    const auto *ElfObj = cast<llvm::object::ELFObjectFileBase>(BinObjFile);
 
    for (const auto &S : ElfObj->getDynamicSymbolIterators()) {
-      uint32_t Flags = S.getFlags();
+      uint32_t Flags = S.getFlags().get();
       // DO NOT insert to table if symbol was undefined
       if (Flags & llvm::object::SymbolRef::SF_Undefined)
          continue;
@@ -6814,7 +6822,7 @@ static std::string GetSharedLibImmediateDepsSlow(std::string lib,
    std::set<string> DedupSet;
    std::string Result = lib + ' ';
    for (const auto &S : BinObjFile->symbols()) {
-      uint32_t Flags = S.getFlags();
+      uint32_t Flags = S.getFlags().get();
       if (Flags & llvm::object::SymbolRef::SF_Undefined) {
          llvm::Expected<StringRef> SymNameErr = S.getName();
          if (!SymNameErr) {
@@ -6838,17 +6846,17 @@ static std::string GetSharedLibImmediateDepsSlow(std::string lib,
           // FIXME: It is unclear whether we can ignore all weak undefined
           // symbols:
           // http://lists.llvm.org/pipermail/llvm-dev/2017-October/118177.html
-          if (SymName == "_Jv_RegisterClasses" ||
-              SymName == "_ITM_deregisterTMCloneTable" ||
-              SymName == "_ITM_registerTMCloneTable")
+          if (SymName.str() == "_Jv_RegisterClasses" ||
+              SymName.str() == "_ITM_deregisterTMCloneTable" ||
+              SymName.str() == "_ITM_registerTMCloneTable")
             continue;
       }
 
          // If we can find the address of the symbol, we have loaded it. Skip.
-         if (skipLoadedLibs && llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(SymName))
+         if (skipLoadedLibs && llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(SymName.str()))
             continue;
 
-         std::string found = ResolveSymbol(SymName, interp, /*searchSystem*/false);
+         std::string found = ResolveSymbol(SymName.str(), interp, /*searchSystem*/false);
          // The expected output is just filename without the full path, which
          // is not very accurate, because our Dyld implementation might find
          // a match in location a/b/c.so and if we return just c.so ROOT might
@@ -7995,7 +8003,8 @@ void TCling::SetDeclAttr(DeclId_t declId, const char* attribute)
    Decl* decl = static_cast<Decl*>(const_cast<void*>(declId));
    ASTContext &C = decl->getASTContext();
    SourceRange commentRange; // this is a fake comment range
-   decl->addAttr( new (C) AnnotateAttr( commentRange, C, attribute, 0 ) );
+   //decl->addAttr( new (C) AnnotateAttr( commentRange, C, attribute, 0 ) );
+   decl->addAttr( new (C) AnnotateAttr(C, clang::AttributeCommonInfo{commentRange}, attribute) );
 }
 
 //______________________________________________________________________________

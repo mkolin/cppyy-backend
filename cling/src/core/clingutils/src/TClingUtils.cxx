@@ -243,7 +243,7 @@ static bool CXXRecordDecl__FindOrdinaryMember(const clang::CXXBaseSpecifier *Spe
       clang::NamedDecl* NonConstFD = const_cast<clang::FieldDecl*>(found);
       clang::NamedDecl** BaseSpecFirstHack
       = reinterpret_cast<clang::NamedDecl**>(NonConstFD);
-      Path.Decls = clang::DeclContextLookupResult(llvm::ArrayRef<clang::NamedDecl*>(BaseSpecFirstHack, 1));
+      Path.Decls = clang::DeclContextLookupResult(*BaseSpecFirstHack).begin();
       return true;
    }
    //
@@ -278,7 +278,7 @@ static const clang::FieldDecl *GetDataMemberFromAllParents(const clang::CXXRecor
       clang::CXXBasePaths::paths_iterator iter = Paths.begin();
       if (iter != Paths.end()) {
          // See CXXRecordDecl__FindOrdinaryMember, this is, well, awkward.
-         const clang::FieldDecl *found = (clang::FieldDecl *)iter->Decls.data();
+         const clang::FieldDecl *found = (clang::FieldDecl *)(*iter->Decls);
          return found;
       }
    }
@@ -1665,7 +1665,7 @@ void CppyyLegacy::TMetaUtils::WriteClassInit(std::ostream& finalString,
       //fprintf(stderr,"DEBUG: %s has value %d\n",classname.c_str(),(int)G__int(G__calc(temporary)));
    }
 
-   std::string filename = CppyyLegacy::TMetaUtils::GetFileName(*cl, interp);
+   std::string filename = CppyyLegacy::TMetaUtils::GetFileName(*cl, interp).str();
    if (filename.length() > 0) {
       for (unsigned int i=0; i<filename.length(); i++) {
          if (filename[i]=='\\') filename[i]='/';
@@ -2300,9 +2300,10 @@ CppyyLegacy::TMetaUtils::GetTrivialIntegralReturnValue(const clang::FunctionDecl
    // ClassDef argument. It's usually just be an integer literal but it could
    // also be an enum or a variable template for all we know.
    // Go through ICE to be more general.
-   llvm::APSInt RetRes;
-   if (!RetExpr->isIntegerConstantExpr(RetRes, funcCV->getASTContext()))
+   clang::Optional<llvm::APSInt> ORetRes = RetExpr->getIntegerConstantExpr(funcCV->getASTContext());
+   if (!ORetRes)
       return res_t{false, -1};
+   llvm::APSInt RetRes = ORetRes.getValue();
    if (RetRes.isSigned()) {
       return res_t{true, (Version_t)RetRes.getSExtValue()};
    }
@@ -3055,8 +3056,7 @@ llvm::StringRef CppyyLegacy::TMetaUtils::GetFileName(const clang::Decl& decl,
       // use HeaderSearch on the basename, to make sure it takes a header from
       // the include path (e.g. not from /usr/include/bits/)
       assert(headerFE && "Couldn't find FileEntry from FID!");
-      const FileEntry *FEhdr
-         = HdrSearch.LookupFile(llvm::sys::path::filename(headerFE->getName()),
+      auto OFEhdr = HdrSearch.LookupFile(llvm::sys::path::filename(headerFE->getName()),
                                 SourceLocation(),
                                 true /*isAngled*/, 0/*FromDir*/, foundDir,
                                 ArrayRef<std::pair<const FileEntry *, const DirectoryEntry *>>(),
@@ -3066,7 +3066,7 @@ llvm::StringRef CppyyLegacy::TMetaUtils::GetFileName(const clang::Decl& decl,
                                 false /*SkipCache*/,
                                 false /*BuildSystemModule*/,
                                 false /*OpenFile*/, true /*CacheFailures*/);
-      if (FEhdr) break;
+      if (OFEhdr) break;
       headerFID = sourceManager.getFileID(includeLoc);
       headerFE = sourceManager.getFileEntryForID(headerFID);
       // If we have a system header in a module we can't just trace back the
@@ -3113,12 +3113,14 @@ llvm::StringRef CppyyLegacy::TMetaUtils::GetFileName(const clang::Decl& decl,
              == headerFileName.data() + headerFileName.size()
              && "Mismatched partitioning of file name!");
       const DirectoryLookup* FoundDir = 0;
-      FELong = HdrSearch.LookupFile(trailingPart, SourceLocation(),
+      auto OFELong = HdrSearch.LookupFile(trailingPart, SourceLocation(),
                                     true /*isAngled*/, 0/*FromDir*/, FoundDir,
                                     ArrayRef<std::pair<const FileEntry *, const DirectoryEntry *>>(),
                                     0/*Searchpath*/, 0/*RelPath*/,
                                     0/*SuggestedModule*/, 0/*RequestingModule*/,
                                     0/*IsMapped*/, nullptr /*IsFrameworkFound*/);
+      if(OFELong)
+        FELong = OFELong.getValue();
    }
 
    if (!FELong) {
@@ -3139,12 +3141,13 @@ llvm::StringRef CppyyLegacy::TMetaUtils::GetFileName(const clang::Decl& decl,
       const DirectoryLookup* FoundDir = 0;
       // Can we find it, and is it the same file as the long version?
       // (or are we back to the previously found spelling, which is fine, too)
-      if (HdrSearch.LookupFile(trailingPart, SourceLocation(),
+      auto hdr = HdrSearch.LookupFile(trailingPart, SourceLocation(),
                                true /*isAngled*/, 0/*FromDir*/, FoundDir,
                                ArrayRef<std::pair<const FileEntry *, const DirectoryEntry *>>(),
                                0/*Searchpath*/, 0/*RelPath*/,
                                0/*SuggestedModule*/, 0/*RequestingModule*/,
-                               0/*IsMapped*/, nullptr /*IsFrameworkFound*/) == FELong) {
+                               0/*IsMapped*/, nullptr /*IsFrameworkFound*/);
+      if (hdr && hdr.getValue() == FELong) {
          return trailingPart;
       }
    }
@@ -3379,7 +3382,9 @@ static bool areEqualValues(const clang::TemplateArgument& tArg,
    llvm::APSInt defaultValueAPSInt(64, false);
    if (Expr* defArgExpr = nttpd.getDefaultArgument()) {
       const ASTContext& astCtxt = nttpdPtr->getASTContext();
-      defArgExpr->isIntegerConstantExpr(defaultValueAPSInt, astCtxt);
+      auto ODefArg = defArgExpr->getIntegerConstantExpr(astCtxt);
+      if(ODefArg)
+          defaultValueAPSInt = defArgExpr->getIntegerConstantExpr(astCtxt).getValue();
    }
 
    const int value = tArg.getAsIntegral().getLimitedValue();
@@ -4357,6 +4362,7 @@ clang::QualType CppyyLegacy::TMetaUtils::ReSubstTemplateArg(clang::QualType inpu
          if (newQT == arr->getElementType()) return QT;
          QT = Ctxt.getConstantArrayType (newQT,
                                         arr->getSize(),
+                                        arr->getSizeExpr(),
                                         arr->getSizeModifier(),
                                         arr->getIndexTypeCVRQualifiers());
 
@@ -4467,7 +4473,7 @@ clang::QualType CppyyLegacy::TMetaUtils::ReSubstTemplateArg(clang::QualType inpu
       } else {
          std::string astDump;
          llvm::raw_string_ostream ostream(astDump);
-         instance->dump(ostream);
+         instance->dump(ostream, Ctxt);
          ostream.flush();
          CppyyLegacy::TMetaUtils::Warning("ReSubstTemplateArg","Unexpected type of declaration context for template parameter: %s.\n\tThe responsible class is:\n\t%s\n",
                                    replacedDeclCtxt->getDeclKindName(), astDump.c_str());

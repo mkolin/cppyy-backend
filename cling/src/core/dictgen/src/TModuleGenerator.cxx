@@ -113,15 +113,14 @@ TModuleGenerator::GetSourceFileKind(const char *filename) const
       clang::Preprocessor &PP = fCI->getPreprocessor();
       clang::HeaderSearch &HdrSearch = PP.getHeaderSearchInfo();
       const clang::DirectoryLookup *CurDir = 0;
-      const clang::FileEntry *hdrFileEntry
-         =  HdrSearch.LookupFile(filename, clang::SourceLocation(),
+      auto OHdrSearch =  HdrSearch.LookupFile(filename, clang::SourceLocation(),
                                  true /*isAngled*/, 0 /*FromDir*/, CurDir,
                                  clang::ArrayRef<std::pair<const clang::FileEntry*,
                                                            const clang::DirectoryEntry*>>(),
                                  nullptr /*SearchPath*/,/*RelativePath*/ nullptr,
                                  nullptr /*RequestingModule*/, nullptr /*SuggestedModule*/,
                                  nullptr /*IsMapped*/, nullptr /*IsFrameworkFound*/);
-      if (hdrFileEntry) {
+      if (OHdrSearch) {
          return kSFKHeader;
       }
       return kSFKNotC;
@@ -575,15 +574,15 @@ bool TModuleGenerator::FindHeader(const std::string &hdrName, std::string &hdrFu
    clang::Preprocessor &PP = fCI->getPreprocessor();
    clang::HeaderSearch &HdrSearch = PP.getHeaderSearchInfo();
    const clang::DirectoryLookup *CurDir = 0;
-   if (const clang::FileEntry *hdrFileEntry
-         =  HdrSearch.LookupFile(hdrName, clang::SourceLocation(),
+   auto OHdrSearch = HdrSearch.LookupFile(hdrName, clang::SourceLocation(),
                                  true /*isAngled*/, 0 /*FromDir*/, CurDir,
                                  clang::ArrayRef<std::pair<const clang::FileEntry*,
                                                          const clang::DirectoryEntry*>>(),
                                  nullptr /*SearchPath*/, nullptr /*RelativePath*/,
                                  nullptr /*RequestingModule*/, nullptr/*SuggestedModule*/,
-                                 nullptr /*IsMapped*/, nullptr /*IsFrameworkFound*/)) {
-      hdrFullPath = hdrFileEntry->getName();
+                                 nullptr /*IsMapped*/, nullptr /*IsFrameworkFound*/);
+   if (OHdrSearch) {
+      hdrFullPath = OHdrSearch.getValue().getName();
       return true;
    }
 

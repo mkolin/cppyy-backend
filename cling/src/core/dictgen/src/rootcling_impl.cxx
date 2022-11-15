@@ -275,7 +275,7 @@ static void AnnotateFieldDecl(clang::FieldDecl &decl,
             // before persisting the ProtoClasses in the root pcms.
             // BEGIN ROOT PCMS
             if (name == propNames::comment) {
-               decl.addAttr(new(C) clang::AnnotateAttr(commentRange, C, value, 0));
+               decl.addAttr(new(C) clang::AnnotateAttr(C, clang::AttributeCommonInfo{commentRange}, value));
             }
             // END ROOT PCMS
 
@@ -285,7 +285,7 @@ static void AnnotateFieldDecl(clang::FieldDecl &decl,
                // This next line is here to use the root pcms. Indeed we need to annotate the AST
                // before persisting the ProtoClasses in the root pcms.
                // BEGIN ROOT PCMS
-               decl.addAttr(new(C) clang::AnnotateAttr(commentRange, C, "!", 0));
+               decl.addAttr(new(C) clang::AnnotateAttr(C, clang::AttributeCommonInfo{commentRange}, "!"));
                // END ROOT PCMS
                // The rest of the lines are not changed to leave in place the system which
                // works with bulk header parsing on library load.
@@ -293,7 +293,7 @@ static void AnnotateFieldDecl(clang::FieldDecl &decl,
                userDefinedProperty = name + propNames::separator + value;
             }
             ::CppyyLegacy::TMetaUtils::Info(0, "%s %s\n", varName.c_str(), userDefinedProperty.c_str());
-            decl.addAttr(new(C) clang::AnnotateAttr(commentRange, C, userDefinedProperty, 0));
+            decl.addAttr(new(C) clang::AnnotateAttr(C, clang::AttributeCommonInfo{commentRange}, userDefinedProperty));
 
          }
       }
@@ -342,7 +342,7 @@ void AnnotateDecl(clang::CXXRecordDecl &CXXRD,
          const std::string &value = attr.second;
          userDefinedProperty = name + TMetaUtils::propNames::separator + value;
          if (genreflex::verbose) std::cout << " * " << userDefinedProperty << std::endl;
-         CXXRD.addAttr(new(C) AnnotateAttr(commentRange, C, userDefinedProperty, 0));
+         CXXRD.addAttr(new(C) AnnotateAttr(C, clang::AttributeCommonInfo{commentRange}, userDefinedProperty));
       }
    }
 
@@ -374,14 +374,14 @@ void AnnotateDecl(clang::CXXRecordDecl &CXXRD,
             commentRange = SourceRange(commentSLoc, commentSLoc.getLocWithOffset(comment.size()));
             // The ClassDef annotation is for the class itself
             if (isClassDefMacro) {
-               CXXRD.addAttr(new(C) AnnotateAttr(commentRange, C, comment.str(), 0));
+               CXXRD.addAttr(new(C) AnnotateAttr(C, clang::AttributeCommonInfo{commentRange}, comment.str()));
             } else if (!isGenreflex) {
                // Here we check if we are in presence of a selection file so that
                // the comment does not ends up as a decoration in the AST,
                // Nevertheless, w/o PCMS this has no effect, since the headers
                // are parsed at runtime and the information in the AST dumped by
                // rootcling is not relevant.
-               (*I)->addAttr(new(C) AnnotateAttr(commentRange, C, comment.str(), 0));
+               (*I)->addAttr(new(C) AnnotateAttr(C, clang::AttributeCommonInfo{commentRange}, comment.str()));
             }
          }
          // Match decls with sel rules if we are in presence of a selection file
@@ -439,6 +439,7 @@ bool IsSelectionXml(const char *filename)
 
 bool IsLinkdefFile(const clang::PresumedLoc& PLoc)
 {
+   if(PLoc.isInvalid()) return false;
    return TMetaUtils::IsLinkdefFile(PLoc.getFilename());
 }
 
@@ -712,7 +713,7 @@ bool CheckInputOperator(const char *what,
    }
    bool has_input_error = false;
    if (method != 0 && (method->getAccess() == clang::AS_public || method->getAccess() == clang::AS_none)) {
-      std::string filename = TMetaUtils::GetFileName(*method, interp);
+      std::string filename = TMetaUtils::GetFileName(*method, interp).str();
       if (strstr(filename.c_str(), "TBuffer.h") != 0 ||
             strstr(filename.c_str(), "Rtypes.h") != 0) {
 
@@ -1274,7 +1275,7 @@ void WriteNamespaceInit(const clang::NamespaceDecl *cl,
       dictStream << "0 /*version*/, ";
    }
 
-   std::string filename = TMetaUtils::GetFileName(*cl, interp);
+   std::string filename = TMetaUtils::GetFileName(*cl, interp).str();
    for (unsigned int i = 0; i < filename.length(); i++) {
       if (filename[i] == '\\') filename[i] = '/';
    }
@@ -1973,8 +1974,8 @@ static bool WriteAST(llvm::StringRef fileName, clang::CompilerInstance *compiler
    clang::ASTWriter writer(stream, buffer, compilerInstance->getModuleCache(), /*Extensions=*/{});
    std::unique_ptr<llvm::raw_ostream> out =
       compilerInstance->createOutputFile(fileName, /*Binary=*/true,
-                                         /*RemoveFileOnSignal=*/false, /*InFile*/ "",
-                                         /*Extension=*/"", /*useTemporary=*/false,
+                                         /*RemoveFileOnSignal=*/false,
+                                         /*useTemporary=*/false,
                                          /*CreateMissingDirectories*/ false);
    if (!out) {
       ::CppyyLegacy::TMetaUtils::Error("WriteAST", "Couldn't open output stream to '%s'!\n", fileName.data());
@@ -1983,7 +1984,7 @@ static bool WriteAST(llvm::StringRef fileName, clang::CompilerInstance *compiler
 
    compilerInstance->getFrontendOpts().RelocatablePCH = true;
 
-   writer.WriteAST(compilerInstance->getSema(), fileName, module, iSysRoot);
+   writer.WriteAST(compilerInstance->getSema(), fileName.str(), module, iSysRoot);
 
    // Write the generated bitstream to "Out".
    out->write(&buffer.front(), buffer.size());
@@ -2104,7 +2105,7 @@ void AddPlatformDefines(std::vector<std::string> &clingArgs)
 
 std::string ExtractFileName(const std::string &path)
 {
-   return llvm::sys::path::filename(path);
+   return llvm::sys::path::filename(path).str();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3226,7 +3227,7 @@ std::list<std::string> RecordDecl2Headers(const clang::CXXRecordDecl &rcd,
 
    } // End template instance
 
-   std::string header = TMetaUtils::GetFileName(rcd, interp);
+   std::string header = TMetaUtils::GetFileName(rcd, interp).str();
    headers.emplace_back(header);
    headers.reverse();
    return headers;
@@ -3336,7 +3337,7 @@ void ExtractHeadersForDecls(const RScanner::ClassColl_t &annotatedRcds,
          autoParseKey = "";
          visitedDecls.clear();
          std::list<std::string> headers(RecordDecl2Headers(*cxxRcd, interp, visitedDecls));
-         headers.push_back(TMetaUtils::GetFileName(*tDef, interp));
+         headers.push_back(TMetaUtils::GetFileName(*tDef, interp).str());
          // remove duplicates, also if not subsequent
          buffer.clear();
          headers.remove_if([&buffer](const std::string & s) {
@@ -3350,19 +3351,19 @@ void ExtractHeadersForDecls(const RScanner::ClassColl_t &annotatedRcds,
 
    // The same for the functions:
    for (auto & func : funcDecls) {
-      std::list<std::string> headers = {TMetaUtils::GetFileName(*func, interp)};
+      std::list<std::string> headers = {TMetaUtils::GetFileName(*func, interp).str()};
       headersDeclsMap[TMetaUtils::GetQualifiedName(*func)] = headers;
    }
 
    // The same for the variables:
    for (auto & var : varDecls) {
-      std::list<std::string> headers = {TMetaUtils::GetFileName(*var, interp)};
+      std::list<std::string> headers = {TMetaUtils::GetFileName(*var, interp).str()};
       headersDeclsMap[TMetaUtils::GetQualifiedName(*var)] = headers;
    }
 
    // The same for the enums:
    for (auto & en : enumDecls) {
-      std::list<std::string> headers = {TMetaUtils::GetFileName(*en, interp)};
+      std::list<std::string> headers = {TMetaUtils::GetFileName(*en, interp).str()};
       headersDeclsMap[TMetaUtils::GetQualifiedName(*en)] = headers;
    }
 }
@@ -4024,6 +4025,7 @@ int RootClingMain(int argc,
               bool isGenreflex = false)
 {
    // Define Options aliasses
+   /*
    auto &opts = llvm::cl::getRegisteredOptions();
    auto &optHelp = *opts["help"];
    llvm::cl::alias optHelpAlias1("h",
@@ -4032,6 +4034,7 @@ int RootClingMain(int argc,
    llvm::cl::alias optHelpAlias2("?",
                       llvm::cl::desc("Alias for -help"),
                       llvm::cl::aliasopt(optHelp));
+   */
 
    // Copied from cling driver.
    // FIXME: Uncomment once we fix ROOT's teardown order.
@@ -4079,7 +4082,7 @@ int RootClingMain(int argc,
       for (const std::string& Opt : gOptBareClingSink)
          clingArgsC.push_back(Opt.c_str());
 
-      auto interp = llvm::make_unique<cling::Interpreter>(clingArgsC.size(),
+      auto interp = std::make_unique<cling::Interpreter>(clingArgsC.size(),
                                                           &clingArgsC[0],
                                                           llvmResourceDir.c_str());
       // FIXME: Diagnose when we have misspelled a flag. Currently we show no
@@ -4200,8 +4203,8 @@ int RootClingMain(int argc,
         ::CppyyLegacy::TMetaUtils::Error("", "isysroot specified without a value.\n");
         return 1;
       }
-      clingArgs.push_back(gOptISysRoot.ArgStr);
-      clingArgs.push_back(gOptISysRoot.ValueStr);
+      clingArgs.push_back(gOptISysRoot.ArgStr.str());
+      clingArgs.push_back(gOptISysRoot.ValueStr.str());
    }
 
    // the "unknown options" are actually user additions to cling :P
