@@ -6522,7 +6522,9 @@ void TCling::UpdateListsOnUnloaded(const cling::Transaction &T)
          continue;
 
       for (auto &D : I->m_DGR)
-         InvalidateCachedDecl(Lists, D);
+      {
+         if(D) InvalidateCachedDecl(Lists, D);
+      }
    }
 }
 
