@@ -6507,6 +6507,7 @@ void TCling::UpdateListsOnUnloaded(const cling::Transaction &T)
    cling::Transaction::const_nested_iterator iNested = T.nested_begin();
    for (cling::Transaction::const_iterator I = T.decls_begin(), E = T.decls_end();
         I != E; ++I) {
+      if (!I) continue;
       if (I->m_Call == cling::Transaction::kCCIHandleVTable)
          continue;
       if (I->m_Call == cling::Transaction::kCCINone) {
