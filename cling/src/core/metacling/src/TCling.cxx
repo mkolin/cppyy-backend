@@ -6510,10 +6510,15 @@ void TCling::UpdateListsOnUnloaded(const cling::Transaction &T)
       if (I->m_Call == cling::Transaction::kCCIHandleVTable)
          continue;
       if (I->m_Call == cling::Transaction::kCCINone) {
-         UpdateListsOnUnloaded(*(*iNested));
-         ++iNested;
+         if (iNested != T.nested_end())
+         {
+           UpdateListsOnUnloaded(*(*iNested));
+           ++iNested;
+         }
          continue;
       }
+      if (I->m_Call > cling::Transaction::kCCINumStates)
+         continue;
 
       for (auto &D : I->m_DGR)
          InvalidateCachedDecl(Lists, D);

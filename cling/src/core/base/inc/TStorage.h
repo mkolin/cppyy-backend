@@ -80,7 +80,8 @@ public:
    static Bool_t HasCustomNewDelete();
 
    static Bool_t FilledByObjectAlloc(volatile const UInt_t* const member);
-   static void UpdateIsOnHeap(volatile const UInt_t &uniqueID, volatile UInt_t &bits);
+   static void UpdateIsOnHeap(const UInt_t &uniqueID, UInt_t &bits);
+   //static void UpdateIsOnHeap(volatile const UInt_t &uniqueID, volatile UInt_t &bits);
 
    ClassDef(TStorage,0)  //Storage manager class
 };
@@ -120,7 +121,8 @@ R__INTENTIONALLY_UNINIT_END
 // function call to avoid losing performance at object creation.
 // Moving the function into the source file, results in doubling of the
 // overhead (compared to inlining)
-R__NEVER_INLINE void TStorage::UpdateIsOnHeap(volatile const UInt_t &uniqueID, volatile UInt_t &bits) {
+//R__NEVER_INLINE void TStorage::UpdateIsOnHeap(volatile const UInt_t &uniqueID, volatile UInt_t &bits) {
+R__NEVER_INLINE void TStorage::UpdateIsOnHeap(const UInt_t &uniqueID, UInt_t &bits) {
    if (TStorage::FilledByObjectAlloc(&uniqueID))
       bits |= kIsOnHeap;
    else
