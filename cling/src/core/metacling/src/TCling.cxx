@@ -6504,27 +6504,22 @@ void TCling::UpdateListsOnUnloaded(const cling::Transaction &T)
                                 (TListOfFunctionTemplates *)gROOT->GetListOfFunctionTemplates(),
                                 (TListOfEnums *)gROOT->GetListOfEnums());
 
-   cling::Transaction::const_nested_iterator iNested = T.nested_begin();
-   for (cling::Transaction::const_iterator I = T.decls_begin(), E = T.decls_end();
-        I != E; ++I) {
-      if (!I) continue;
+   unsigned n = 0;
+   uint64_t size = ((uint64_t)T.decls_end() - (uint64_t)T.decls_begin()) / sizeof(cling::Transaction::DelayCallInfo);
+   for(unsigned i = 0; i < size; ++i) {
+      cling::Transaction::const_iterator I = T.decls_begin() + i;
+      cling::Transaction::const_nested_iterator iNested = T.nested_begin() + n;
+
       if (I->m_Call == cling::Transaction::kCCIHandleVTable)
          continue;
       if (I->m_Call == cling::Transaction::kCCINone) {
-         if (iNested != T.nested_end())
-         {
            UpdateListsOnUnloaded(*(*iNested));
-           ++iNested;
-         }
+           ++n;
          continue;
       }
-      if (I->m_Call > cling::Transaction::kCCINumStates)
-         continue;
 
       for (auto &D : I->m_DGR)
-      {
-         if(D) InvalidateCachedDecl(Lists, D);
-      }
+         InvalidateCachedDecl(Lists, D);
    }
 }
 
